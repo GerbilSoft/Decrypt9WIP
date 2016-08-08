@@ -863,6 +863,12 @@ u32 RestoreNand(u32 param)
     if (InputFileNameSelector(filename, "NAND.bin", NULL, NULL, 0, NAND_MIN_SIZE, true) != 0)
         return 1;
     
+    // check if actually on A9LH for the special option
+    if (!emunand_header && (param & NR_KEEPA9LH) && (*(u32*) 0x101401C0) != 0) {
+        Debug("A9LH not detected, use regular restore");
+        return 1;
+    }
+    
     // safety checks
     if (!(param & NR_NOCHECKS)) {
         Debug("Validating NAND dump %s...", filename);

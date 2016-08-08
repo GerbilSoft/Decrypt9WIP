@@ -208,8 +208,7 @@ static u32 CheckNandHeaderType(u8* header) {
     return NAND_HDR_UNK;
 }
 
-static u32 CheckNandHeaderIntegrity(u8* header) {
-    
+static u32 CheckNandHeaderIntegrity(u8* header) {  
     if (!header)
         return 1;
     
@@ -620,7 +619,7 @@ u32 DecryptNandToMem(u8* buffer, u32 offset, u32 size, PartitionInfo* partition)
     return 0;
 }
 
-u32 DecryptNandToFile(const char* filename, u32 offset, u32 size, PartitionInfo* partition)
+u32 DecryptNandToFile(const char* filename, u32 offset, u32 size, PartitionInfo* partition, u8* sha256)
 {
     u8* buffer = BUFFER_ADDRESS;
     u32 result = 0;
@@ -631,6 +630,8 @@ u32 DecryptNandToFile(const char* filename, u32 offset, u32 size, PartitionInfo*
     if (!DebugFileCreate(filename, true))
         return 1;
 
+    if (sha256)
+        sha_init(SHA256_MODE);
     for (u32 i = 0; i < size; i += NAND_SECTOR_SIZE * SECTORS_PER_READ) {
         u32 read_bytes = min(NAND_SECTOR_SIZE * SECTORS_PER_READ, (size - i));
         ShowProgress(i, size);
@@ -639,7 +640,11 @@ u32 DecryptNandToFile(const char* filename, u32 offset, u32 size, PartitionInfo*
             result = 1;
             break;
         }
+        if (sha256)
+            sha_update(buffer, read_bytes);
     }
+    if (sha256)
+        sha_get(sha256);
 
     ShowProgress(0, 0);
     FileClose();
@@ -731,6 +736,7 @@ u32 DecryptNandPartition(u32 param)
     PartitionInfo* p_info = NULL;
     char filename[64];
     u8 magic[NAND_SECTOR_SIZE];
+    u8 sha256[0x20];
     
     for (u32 partition_id = P_TWLN; partition_id <= P_CTRNAND; partition_id = partition_id << 1) {
         if (param & partition_id) {
@@ -752,8 +758,16 @@ u32 DecryptNandPartition(u32 param)
     }
     if (OutputFileNameSelector(filename, p_info->name, "bin") != 0)
         return 1;
+    if (DecryptNandToFile(filename, p_info->offset, p_info->size, p_info, (param & PO_SHAFILE) ? sha256 : NULL))
+        return 1;
     
-    return DecryptNandToFile(filename, p_info->offset, p_info->size, p_info);
+    if (param & PO_SHAFILE) { // create SHA file
+        char hashname[64];
+        snprintf(hashname, 64, "%s.sha", filename);
+        FileDumpData(filename, sha256, 0x20);
+    }
+    
+    return 0;
 }
 
 u32 DecryptSector0x96(u32 param)
@@ -1003,6 +1017,24 @@ u32 InjectNandPartition(u32 param)
         if (p_info->keyslot == 0x05)
             Debug("(or slot0x05keyY not set up)");
         return 1;
+    }
+    
+    // SHA / safety check
+    char hashname[64];
+    u8 sha256[0x21];
+    snprintf(hashname, 64, "%s.sha", filename);
+    u32 size = FileGetData(hashname, sha256, 0x21, 0);
+    if (size > 0) {
+        if ((size > 0x20) && !(param & PO_TRANSFER)) {
+            Debug("File is not intended for regular injection");
+            return 1;
+        }
+        Debug(".SHA file found, verifying...");
+        if (CheckHashFromFile(hashname, 0, 0, sha256) != 0) {
+            Debug("Failed, image corrupt or modified!");
+            return 1;
+        }
+        Debug("Verified okay!");
     }
     
     // FIRM check

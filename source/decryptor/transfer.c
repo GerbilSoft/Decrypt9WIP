@@ -61,7 +61,7 @@ u32 CtrNandTransfer(u32 param) {
     Debug("");
     Debug("Step #1: .SHA verification of CTRNAND image...");
     Debug("Checking hash from .SHA file...");
-    if (CheckHashFromFile(hashname, 0, 0, sha256) != 0) {
+    if (CheckHashFromFile(filename, 0, 0, sha256) != 0) {
         Debug("Failed, image corrupt or modified!");
         return 1;
     }

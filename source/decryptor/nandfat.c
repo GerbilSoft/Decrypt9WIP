@@ -435,8 +435,12 @@ u32 DumpFile(u32 param)
     
     if (DebugSeekFileInNand(&offset, &size, f_info->name_l, f_info->path, p_info) != 0)
         return 1;
-    if (OutputFileNameSelector(filename, f_info->name_l, NULL) != 0)
-        return 1;
+    if (!(param & PO_TRANSFER)) {
+        if (OutputFileNameSelector(filename, f_info->name_l, NULL) != 0)
+            return 1;
+    } else {
+        snprintf(filename, 64, "transfer_%s", f_info->name_l);
+    }
     if (DecryptNandToFile(filename, offset, size, p_info, NULL) != 0)
         return 1;
     
@@ -456,8 +460,12 @@ u32 InjectFile(u32 param)
     
     if (DebugSeekFileInNand(&offset, &size, f_info->name_l, f_info->path, p_info) != 0)
         return 1;
-    if (InputFileNameSelector(filename, f_info->name_s, NULL, NULL, 0, size, false) != 0)
-        return 1;
+    if (!(param & PO_TRANSFER)) {
+        if (InputFileNameSelector(filename, f_info->name_s, NULL, NULL, 0, size, false) != 0)
+            return 1;
+    } else {
+        snprintf(filename, 64, "transfer_%s", f_info->name_l);
+    }
     if (EncryptFileToNand(filename, offset, size, p_info) != 0)
         return 1;
     
@@ -475,6 +483,8 @@ u32 InjectFile(u32 param)
         if ((FixCmac(header, temp, 0x10C, 0x0B) != 0) && (EncryptMemToNand(header, offset, 0x200, p_info) != 0))
             return 1;
     }
+    
+    // CMACs for system saves?
     
     return 0;
 }
@@ -705,7 +715,6 @@ u32 DumpNcchFirms(u32 param)
 
 u32 AutoFixCtrnand(u32 param)
 {
-    (void) (param); // param is unused here
     NandFileInfo* f_info;
     PartitionInfo* p_info;
     u8 header[0x200];

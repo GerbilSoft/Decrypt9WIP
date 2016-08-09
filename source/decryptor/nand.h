@@ -14,8 +14,8 @@
 #define P_CTRNAND   (1<<5)
 
 // NAND partition dump options
-#define PO_SHAFILE  (1<<10) // create .SHA file in the process
-#define PO_TRANSFER (1<<11) // mainly used externally
+#define PO_SHAFILE  (1<<20) // create .SHA file in the process
+#define PO_TRANSFER (1<<21) // mainly used externally
 
 // options for NAND backup & restore
 #define NB_MINSIZE  (1<<10)

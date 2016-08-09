@@ -12,6 +12,7 @@
 #include "decryptor/titlekey.h"
 #include "decryptor/selftest.h"
 #include "decryptor/xorpad.h"
+#include "decryptor/transfer.h"
 
 #define SUBMENU_START 7
 
@@ -235,7 +236,7 @@ MenuInfo menu[] =
         }
     },
     {
-        "Miscellaneous... (SysNAND)", 8, // ID 10
+        "Miscellaneous... (SysNAND)", 9, // ID 10
         {
             
             { "Health&Safety Dump",           &DumpHealthAndSafety,   0 },
@@ -245,11 +246,12 @@ MenuInfo menu[] =
             { "Update SeedDB",                &UpdateSeedDb,          0 },
             { "Autofix CTRNAND",              &AutoFixCtrnand,        N_NANDWRITE },
             { "NCCH FIRMs Dump",              &DumpNcchFirms,         0 },
-            { "FIRM ARM9 Decryptor",          &DecryptFirmArm9File,   0 }
+            { "FIRM ARM9 Decryptor",          &DecryptFirmArm9File,   0 },
+            { "Auto CTRNAND Transfer",        &CtrNandTransfer,       N_NANDWRITE }
         }
     },
     {
-        "Miscellaneous... (EmuNAND)", 6, // ID 11
+        "Miscellaneous... (EmuNAND)", 7, // ID 11
         {
             
             { "Health&Safety Dump",           &DumpHealthAndSafety,   N_EMUNAND },
@@ -257,7 +259,8 @@ MenuInfo menu[] =
             { "Update SeedDB",                &UpdateSeedDb,          N_EMUNAND },
             { "Autofix CTRNAND",              &AutoFixCtrnand,        N_NANDWRITE | N_EMUNAND },
             { "NCCH FIRMs Dump",              &DumpNcchFirms,         N_EMUNAND },
-            { "FIRM ARM9 Decryptor",          &DecryptFirmArm9File,   0 }
+            { "FIRM ARM9 Decryptor",          &DecryptFirmArm9File,   0 },
+            { "Auto CTRNAND Transfer",        &CtrNandTransfer,       N_NANDWRITE | N_EMUNAND }
         }
     },
     {

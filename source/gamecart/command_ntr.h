@@ -15,5 +15,10 @@ void NTR_CmdEnter16ByteMode(void);
 void NTR_CmdReadHeader (void* buffer);
 void NTR_CmdReadData (u32 offset, void* buffer);
 
-bool NTR_Secure_Init (u8* buffer, u32 CartID);
-
+/**
+ * Initialize Secure Area mode.
+ * @param buffer Read buffer.
+ * @param CartID Cartridge ID.
+ * @param twl If non-zero, use DSi mode.
+ */
+bool NTR_Secure_Init (u8* buffer, u32 CartID, int twl);

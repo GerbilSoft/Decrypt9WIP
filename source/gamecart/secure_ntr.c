@@ -72,7 +72,7 @@ void NTR_CryptDown(u32* pCardHash, u32* aPtr)
 // guaranteed to be random.
 #define getRandomNumber() (4)
 
-void NTR_InitKey1 (u8* aCmdData, IKEY1* pKey1)
+void NTR_InitKey1 (u8* aCmdData, IKEY1* pKey1, bool twl)
 {
     pKey1->iii = getRandomNumber() & 0x00000fff;
     pKey1->jjj = getRandomNumber() & 0x00000fff;
@@ -81,7 +81,7 @@ void NTR_InitKey1 (u8* aCmdData, IKEY1* pKey1)
     pKey1->mmm = getRandomNumber() & 0x00000fff;
     pKey1->nnn = getRandomNumber() & 0x00000fff;
 
-    aCmdData[7] = NTRCARD_CMD_ACTIVATE_BF;
+    aCmdData[7] = (twl ? NTRCARD_CMD_ACTIVATE_BF_TWL : NTRCARD_CMD_ACTIVATE_BF);
     aCmdData[6] = (u8)(pKey1->iii >> 4);
     aCmdData[5] = (u8)((pKey1->iii << 4) | (pKey1->jjj >> 8));
     aCmdData[4] = (u8)pKey1->jjj;
@@ -89,6 +89,7 @@ void NTR_InitKey1 (u8* aCmdData, IKEY1* pKey1)
     aCmdData[2] = (u8)(pKey1->kkkkk >> 8);
     aCmdData[1] = (u8)pKey1->kkkkk;
     aCmdData[0] = (u8)getRandomNumber();
+    Debug ("TWL = %d, aCmdData[7] = %02X", twl, aCmdData[7]);
 }
 
 void NTR_ApplyKey (u32* pCardHash, int nCardHash, u32* pKeyCode)
@@ -112,12 +113,12 @@ void NTR_ApplyKey (u32* pCardHash, int nCardHash, u32* pKeyCode)
     }
 }
 
-void NTR_InitKey (u32 aGameCode, u32* pCardHash, int nCardHash, u32* pKeyCode, bool aType)
+void NTR_InitKey (u32 aGameCode, u32* pCardHash, int nCardHash, u32* pKeyCode, bool aType, bool twl)
 {
-    //const u8* BlowfishTwl = (const u8*)0x01FFD3E0;
-    const u8* BlowfishNtr = (const u8*)0x01FFE428;
+    static const u8 *const BlowfishTwl = (const u8*)0x01FFD3E0;
+    static const u8 *const BlowfishNtr = (const u8*)0x01FFE428;
 
-    memcpy (pCardHash, BlowfishNtr, 0x1048);
+    memcpy (pCardHash, (twl ? BlowfishTwl : BlowfishNtr), 0x1048);
     pKeyCode[0] = aGameCode;
     pKeyCode[1] = aGameCode/2;
     pKeyCode[2] = aGameCode*2;
@@ -159,11 +160,11 @@ void NTR_CreateEncryptedCommand (u8 aCommand, u32* pCardHash, u8* aCmdData, IKEY
     pKey1->kkkkk+=1;
 }
 
-void NTR_DecryptSecureArea (u32 aGameCode, u32* pCardHash, int nCardHash, u32* pKeyCode, u32* pSecureArea)
+void NTR_DecryptSecureArea (u32 aGameCode, u32* pCardHash, int nCardHash, u32* pKeyCode, u32* pSecureArea, bool twl)
 {
-    NTR_InitKey (aGameCode, pCardHash, nCardHash, pKeyCode, false);
+    NTR_InitKey (aGameCode, pCardHash, nCardHash, pKeyCode, false, twl);
     NTR_CryptDown(pCardHash, pSecureArea);
-    NTR_InitKey(aGameCode, pCardHash, nCardHash, pKeyCode, true);
+    NTR_InitKey(aGameCode, pCardHash, nCardHash, pKeyCode, true, twl);
     for(int ii=0;ii<0x200;ii+=2) NTR_CryptDown (pCardHash, pSecureArea + ii);
 }
 
@@ -195,7 +196,13 @@ void NTR_CmdSecure (u32 flags, void* buffer, u32 length, u8* pcmd, u32 Delay)
     cardPolledTransfer (flags, buffer, length, pcmd);
 }
 
-bool NTR_Secure_Init (u8* header, u32 CartID)
+/**
+ * Initialize Secure Area mode.
+ * @param buffer Read buffer.
+ * @param CartID Cartridge ID.
+ * @param twl If true, use DSi mode.
+ */
+bool NTR_Secure_Init (u8* header, u32 CartID, bool twl)
 {
 	u32 iGameCode;
     u32 iCardHash[0x412] = {0};
@@ -215,12 +222,12 @@ bool NTR_Secure_Init (u8* header, u32 CartID)
 
     iGameCode = *((u32*)&header[0x0C]);
     ReadDataFlags = cardControl13 & ~ NTRCARD_BLK_SIZE(7);
-    NTR_InitKey (iGameCode, iCardHash, nCardHash, iKeyCode, false);
+    NTR_InitKey (iGameCode, iCardHash, nCardHash, iKeyCode, false, twl);
 
     if(!iCheapCard) flagsKey1 |= NTRCARD_SEC_LARGE;
     //Debug("iCheapCard=%d, readTimeout=%d", iCheapCard, readTimeout);
 
-	NTR_InitKey1 (cmdData, &iKey1);
+	NTR_InitKey1 (cmdData, &iKey1, twl);
     //Debug("cmdData=%02X %02X %02X %02X %02X %02X %02X %02X ", cmdData[0], cmdData[1], cmdData[2], cmdData[3], cmdData[4], cmdData[5], cmdData[6], cmdData[7]);
     //Debug("iKey1=%08X %08X %08X", iKey1.iii, iKey1. jjj, iKey1. kkkkk);
     //Debug("iKey1=%08X %08X %08X", iKey1. llll, iKey1. mmm, iKey1. nnn);
@@ -257,7 +264,7 @@ bool NTR_Secure_Init (u8* header, u32 CartID)
     if (SecureCartID != CartID)
     {
 		Debug ("Invalid SecureCartID. (%08X != %08X)", SecureCartID, CartID);
-        return false;
+        if (!twl) return false;
     }
 
     int secureAreaOffset = 0;
@@ -287,7 +294,7 @@ bool NTR_Secure_Init (u8* header, u32 CartID)
     }
     NTR_CmdSecure (flagsKey1, NULL, 0, cmdData, readTimeout);
 
-    NTR_DecryptSecureArea (iGameCode, iCardHash, nCardHash, iKeyCode, secureArea);
+    NTR_DecryptSecureArea (iGameCode, iCardHash, nCardHash, iKeyCode, secureArea, twl);
     //Debug("secure area %08X %08X", secureArea[0], secureArea[1]);
     if(secureArea[0] == 0x72636e65/*'encr'*/ && secureArea[1] == 0x6a624f79/*'yObj'*/)
     {
@@ -296,8 +303,8 @@ bool NTR_Secure_Init (u8* header, u32 CartID)
     }
     else
     {
-        Debug("Invalid secure area.(%08X %08X)", secureArea[0], secureArea[1]);
-        return false;
+        Debug("Invalid secure area. (%08X %08X)", secureArea[0], secureArea[1]);
+        if (!twl) return false;
     }
 
     return true;

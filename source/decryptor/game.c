@@ -1677,11 +1677,20 @@ u32 DumpNtrGameCart(u32 param)
 {
     char filename[64];
     u64 cart_size = 0;
+    u64 ntr_data_size = 0;
+    u64 twl_data_size = 0;
     u64 data_size = 0;
     u64 dump_size = 0;
     u8* buff = BUFFER_ADDRESS;
     u64 offset = 0x8000;
     char name[16];
+
+    // DSi functions.
+    // DSi secure area starts after the DS ROM area.
+    u32 cartId;
+    bool twl = false;
+    u64 twl_secure_addr = 0;
+    //u8 twl_secure[0x4000];
 
     memset (buff, 0x00, 0x4000);
 
@@ -1700,27 +1709,25 @@ u32 DumpNtrGameCart(u32 param)
     memcpy (name, &buff[0x0C], 4 + 2);
     Debug("Product ID: %s", name);
 
+    // Check if this cartridge has DSi functionality.
+    cartId = Cart_GetID();
+    twl = ((cartId & 0x40000000) != 0);
+
     cart_size = (128 * 1024) << buff[0x14];
-    data_size = *((u32*)&buff[0x80]);;
+    ntr_data_size = *((u32*)&buff[0x80]);
+    twl_data_size = *((u32*)&buff[0x210]);	// FIXME: Not working.
+    data_size = (twl ? twl_data_size : ntr_data_size);
+
     dump_size = (param & CD_TRIM) ? data_size : cart_size;
     Debug("Cartridge data size: %lluMB", cart_size / 0x100000);
     Debug("Cartridge used size: %lluMB", data_size / 0x100000);
     Debug("Cartridge dump size: %lluMB", dump_size / 0x100000);
 
-    //Unitcode (00h=NDS, 02h=NDS+DSi, 03h=DSi) (bit1=DSi)
-    if (buff[0x12] == 0x02) {
-        Debug ("Hybrid(DS+DSi) cartridge was detected");
-        Debug ("This dumper supports only DS mode");
-    }
-    else if (buff[0x12] != 0x00) {
-        Debug ("DSi Cartridge is not supported");
-        return 1;
-    }
-
-    if (!NTR_Secure_Init (buff, Cart_GetID())) {
+    // Read NTR secure area.
+    if (!NTR_Secure_Init (buff, cartId, false)) {
         Debug("Error reading secure data");
         return 1;
-	}
+    }
 
     Debug("");
     snprintf(filename, 64, "/%s%s%s.nds", GetGameDir() ? GetGameDir() : "", GetGameDir() ? "/" : "", name);
@@ -1730,6 +1737,40 @@ u32 DumpNtrGameCart(u32 param)
     if (!DebugFileWrite(buff, 0x8000, 0)) {
         FileClose();
         return 1;
+    }
+
+    if (twl) {
+        // Read the TWL secure area.
+        // Starts after the DS ROM area, aligned to 1 MB.
+        // (Secure area is actually at $xx3000-$xx6FFF)
+        twl_secure_addr = (ntr_data_size + 0x0FFFFF) & ~0x0FFFFF;
+	twl_secure_addr += 0x3000;
+        Debug("TWL secure address is %08llX", twl_secure_addr);
+
+        // Reset is required in order to switch to DSi cartridge mode.
+        Cart_Init();
+        u32 new_cartId = Cart_GetID();
+        if (new_cartId != cartId) {
+            Debug("Cart ID changed after reset!");
+            FileClose();
+            return 1;
+        }
+
+        NTR_CmdReadHeader (buff);
+        if (buff[0] == 0x00) {
+            Debug("Error re-reading cart header");
+            FileClose();
+            return 1;
+        }
+
+        // Read TWL secure area.
+        if (!NTR_Secure_Init (buff, cartId, true)) {
+            Debug("Error reading secure data");
+            return 1;
+        }
+
+        // TODO: Actually save the secure area.
+        DebugFileWrite(buff+0x4000, 0x4000, 0x8000);
     }
 
 	u32 stop = 0;
@@ -1766,7 +1807,15 @@ u32 DumpGameCart(u32 param)
     Cart_Init();
     cartId = Cart_GetID();
     Debug("Cartridge ID: %08X", Cart_GetID());
-    Debug("Cartridge Type: %s", (cartId & 0x10000000) ? "CTR" : "NTR");
+
+    const char *cartType;
+    if (cartId & 0x10000000)
+	    cartType = "CTR";
+    else if (cartId & 0x40000000)
+	    cartType = "TWL";
+    else
+	    cartType = "NT";
+    Debug("Cartridge Type: %s", cartType);
     
     // check cartridge type
     if ((cartId & 0x10000000) && (param & CD_NTRCART)) {
